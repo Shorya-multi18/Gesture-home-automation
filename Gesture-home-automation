@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8" />
+  <title>Gesture Controlled Home Automation</title>
+  <style>
+    video, canvas {
+      border: 2px solid black;
+      width: 480px;
+      height: 360px;
+      display: block;
+      margin: 10px auto;
+    }
+    #status {
+      font-size: 24px;
+      text-align: center;
+      margin-top: 10px;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1 style="text-align:center;">Gesture Controlled Home Automation</h1>
+  <video id="webcam" autoplay playsinline></video>
+  <canvas id="canvas"></canvas>
+  <div id="status">डिवाइस का स्टेटस: OFF</div>
+
+  <!-- Tensorflow and Handpose Models -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/handpose"></script>
+
+  <script>
+    const video = document.getElementById('webcam');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const statusDiv = document.getElementById('status');
+    canvas.width = 480;
+    canvas.height = 360;
+
+    let model;
+    let deviceOn = false;
+
+    async function setupCamera() {
+      const stream = await navigator.mediaDevices.getUserMedia({video:true});
+      video.srcObject = stream;
+      return new Promise(resolve => {
+        video.onloadedmetadata = () => {
+          resolve(video);
+        };
+      });
+    }
+
+    async function loadModel() {
+      model = await handpose.load();
+      console.log("Handpose model loaded.");
+    }
+
+    function isThumbsUp(landmarks) {
+      // Simple check: Thumb tip y should be less than index finger pip y (hand up)
+      return landmarks[4][1] < landmarks[6][1];
+    }
+
+    async function detectHands() {
+      const predictions = await model.estimateHands(video);
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.drawImage(video,0,0,canvas.width,canvas.height);
+
+      if(predictions.length > 0) {
+        const landmarks = predictions[0].landmarks;
+
+        // Draw red dots on hand landmarks
+        for(let i=0; i<landmarks.length; i++) {
+          const [x,y,z] = landmarks[i];
+          ctx.beginPath();
+          ctx.arc(x,y,5,0,2*Math.PI);
+          ctx.fillStyle = "red";
+          ctx.fill();
+        }
+
+        if(isThumbsUp(landmarks)) {
+          if(!deviceOn) {
+            deviceOn = true;
+            statusDiv.textContent = "डिवाइस का स्टेटस: ON";
+            speak("लाइट चालू");
+          }
+        } else {
+          if(deviceOn) {
+            deviceOn = false;
+            statusDiv.textContent = "डिवाइस का स्टेटस: OFF";
+            speak("लाइट बंद");
+          }
+        }
+      }
+      requestAnimationFrame(detectHands);
+    }
+
+    function speak(text) {
+      const msg = new SpeechSynthesisUtterance(text);
+      msg.lang = 'hi-IN';
+      speechSynthesis.speak(msg);
+    }
+
+    async function main() {
+      await setupCamera();
+      await loadModel();
+      detectHands();
+    }
+
+    main();
+  </script>
+</body>
+</html>
